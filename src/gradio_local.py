@@ -1,4 +1,3 @@
-%%writefile /content/chatterbox-finetuning/src/gradio_local.py
 import random
 import numpy as np
 import torch

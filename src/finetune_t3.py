@@ -245,6 +245,7 @@ class SpeechFineTuningDataset(Dataset):
         return return_dict
 
 # --- Data Collator ---
+# --- Data Collator ---
 @dataclass
 class SpeechDataCollator:
     t3_config: T3Config  # Chatterbox T3Config
@@ -288,7 +289,7 @@ class SpeechDataCollator:
         t3_cond_emotion_adv = emotion_adv_scalars.view(batch_size, 1, 1)
 
         IGNORE_ID = -100
-        prompt_len = self.t3_config.speech_cond_prompt_len
+        # prompt_len = self.t3_config.speech_cond_prompt_len # (Không còn dùng để mask nữa)
 
         # --- Build labels_text ---
         # Shift off BOS from padded_text_tokens: new length = max_text_len - 1
@@ -313,15 +314,13 @@ class SpeechDataCollator:
         arange_speech = torch.arange(T_speech, device=shifted_speech.device)  # (T_speech,)
         mask_pad_speech = arange_speech[None] >= speech_lens_minus_one[:, None]  # (B, T_speech)
 
-        # Mask positions t < prompt_len
-        mask_prompt = arange_speech[None] < prompt_len  # (1, T_speech) -> broadcast to (B, T_speech)
-        mask_prompt = mask_prompt.expand(batch_size, T_speech)
-
-        # Combine masks
-        mask_speech_total = mask_pad_speech | mask_prompt  # (B, T_speech)
+        # --- [MODIFIED] ---
+        # Trước đây code sẽ mask cả phần prompt (mask_prompt).
+        # Giờ ta chỉ mask phần padding thôi để model học toàn bộ audio.
+        mask_speech_total = mask_pad_speech  # (B, T_speech)
 
         labels_speech = shifted_speech.clone()          # (B, T_speech)
-        labels_speech[mask_speech_total] = IGNORE_ID    # set prompt & pad to -100
+        labels_speech[mask_speech_total] = IGNORE_ID    # set pad to -100
 
         return {
             "text_tokens": padded_text_tokens,
@@ -332,7 +331,7 @@ class SpeechDataCollator:
             "t3_cond_prompt_speech_tokens": t3_cond_prompt_speech_tokens,
             "t3_cond_emotion_adv": t3_cond_emotion_adv,
             "labels_text": labels_text,       # (B, max_text_len - 1) masked with -100
-            "labels_speech": labels_speech,   # (B, max_speech_len - 1) masked with -100
+            "labels_speech": labels_speech,   # (B, max_speech_len - 1) masked with -100 (FULL AUDIO TRAIN)
         }
 # --- Model Wrapper ---
 class T3ForFineTuning(torch.nn.Module):
